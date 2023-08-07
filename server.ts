@@ -22,7 +22,7 @@ async function main() {
   app.get("/api/healthchecker", (req: Request, res: Response) => {
     res.status(200).json({
       status: "success",
-      message: "Welcome to Two-Factor Authentication with Node.js",
+      message: "Welcome to Five-Factor Authentication",
     });
   });
 

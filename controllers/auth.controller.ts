@@ -13,11 +13,27 @@ const RegisterUser = async (
   try {
     const { name, email, password } = req.body;
 
+    // Check if user with the same email already exists
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({
+        status: "fail",
+        message: "Email already exists, please use another email address",
+      });
+    }
+
+    // Hash the password
+    const hashedPassword = crypto
+      .createHash("sha256")
+      .update(password)
+      .digest("hex");
+
+    // Create the user
     await prisma.user.create({
       data: {
         name,
         email,
-        password: crypto.createHash("sha256").update(password).digest("hex"),
+        password: hashedPassword,
       },
     });
 
@@ -30,7 +46,7 @@ const RegisterUser = async (
       if (error.code === "P2002") {
         return res.status(409).json({
           status: "fail",
-          message: "Email already exist, please use another email address",
+          message: "Email already exists, please use another email address",
         });
       }
     }
@@ -45,12 +61,24 @@ const LoginUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = req.body;
 
+    // Check if the user exists in the database
     const user = await prisma.user.findUnique({ where: { email } });
-
     if (!user) {
       return res.status(404).json({
         status: "fail",
         message: "No user with that email exists",
+      });
+    }
+
+    // Compare the provided password with the stored hashed password
+    const hashedPassword = crypto
+      .createHash("sha256")
+      .update(password)
+      .digest("hex");
+    if (hashedPassword !== user.password) {
+      return res.status(401).json({
+        status: "fail",
+        message: "Invalid email or password",
       });
     }
 
@@ -94,7 +122,7 @@ const GenerateOTP = async (req: Request, res: Response) => {
 
     let totp = new OTPAuth.TOTP({
       issuer: "codevoweb.com",
-      label: "CodevoWeb",
+      label: "Codevoweb",
       algorithm: "SHA1",
       digits: 6,
       period: 15,
@@ -127,8 +155,27 @@ const VerifyOTP = async (req: Request, res: Response) => {
   try {
     const { user_id, token } = req.body;
 
-    const user = await prisma.user.findUnique({ where: { id: user_id } });
-    const message = "Token is invalid or user doesn't exist";
+    // Check if user_id or token (email) is provided
+    if (!user_id && !token) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Please provide either user_id or token (email)",
+      });
+    }
+
+    // Find user by either id or email
+    let user;
+    if (user_id) {
+      user = await prisma.user.findUnique({ where: { id: user_id } });
+    } else {
+      user = await prisma.user.findUnique({ where: { email: token } });
+    }
+    // Add console.log statements to debug
+    console.log("user_id:", user_id);
+    console.log("token:", token);
+    console.log("user:", user);
+
+    const message = "TOTP Enabled";
     if (!user) {
       return res.status(401).json({
         status: "fail",
@@ -138,7 +185,7 @@ const VerifyOTP = async (req: Request, res: Response) => {
 
     let totp = new OTPAuth.TOTP({
       issuer: "codevoweb.com",
-      label: "CodevoWeb",
+      label: "Codevoweb",
       algorithm: "SHA1",
       digits: 6,
       period: 15,
@@ -155,7 +202,7 @@ const VerifyOTP = async (req: Request, res: Response) => {
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id: user_id },
+      where: { id: user.id }, // Use user.id instead of user_id
       data: {
         otp_enabled: true,
         otp_verified: true,
@@ -184,7 +231,7 @@ const ValidateOTP = async (req: Request, res: Response) => {
     const { user_id, token } = req.body;
     const user = await prisma.user.findUnique({ where: { id: user_id } });
 
-    const message = "Token is invalid or user doesn't exist";
+    const message = "TOTP Enabled";
     if (!user) {
       return res.status(401).json({
         status: "fail",
@@ -193,7 +240,7 @@ const ValidateOTP = async (req: Request, res: Response) => {
     }
     let totp = new OTPAuth.TOTP({
       issuer: "codevoweb.com",
-      label: "CodevoWeb",
+      label: "Codevoweb",
       algorithm: "SHA1",
       digits: 6,
       period: 15,
